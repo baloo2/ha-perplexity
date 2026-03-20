@@ -24,6 +24,8 @@ from custom_components.perplexity.const import (
 )
 from custom_components.perplexity.conversation import (
     ParsedAction,
+    ParsedTimerAction,
+    _build_timer_slots,
     _parse_json_response,
 )
 
@@ -591,3 +593,185 @@ async def test_conversation_with_home_location_no_country(
 
     assert "Coordinates: 51.507,-0.128" in system_content
     assert "Country" not in system_content
+
+
+async def test_conversation_with_timer_action(
+    hass: HomeAssistant,
+    mock_perplexity_client: MagicMock,
+    mock_setup_entry: MockConfigEntry,
+    mock_stream: MagicMock,
+) -> None:
+    """Test conversation with timer action execution."""
+    json_response = json_dumps(
+        {
+            "response": "Starting a 5 minute timer for eggs.",
+            "actions": [],
+            "timer_actions": [
+                {
+                    "command": "start",
+                    "name": "eggs",
+                    "minutes": 5,
+                }
+            ],
+        }
+    )
+    mock_perplexity_client.chat.completions.create = AsyncMock(
+        return_value=mock_stream(json_response)
+    )
+
+    result = await conversation.async_converse(
+        hass,
+        "Set a 5 minute timer for eggs",
+        None,
+        Context(),
+        agent_id=CONVERSATION_ENTITY_ID,
+    )
+
+    assert result.response.response_type == intent.IntentResponseType.ACTION_DONE
+
+
+async def test_conversation_with_increase_timer_action(
+    hass: HomeAssistant,
+    mock_perplexity_client: MagicMock,
+    mock_setup_entry: MockConfigEntry,
+    mock_stream: MagicMock,
+) -> None:
+    """Test conversation with increase timer action execution."""
+    json_response = json_dumps(
+        {
+            "response": "Increasing the timer for eggs by 1 minute.",
+            "actions": [],
+            "timer_actions": [
+                {
+                    "command": "increase",
+                    "name": "eggs",
+                    "minutes": 1,
+                }
+            ],
+        }
+    )
+    mock_perplexity_client.chat.completions.create = AsyncMock(
+        return_value=mock_stream(json_response)
+    )
+
+    result = await conversation.async_converse(
+        hass,
+        "Increase the timer for eggs by 1 minute",
+        None,
+        Context(),
+        agent_id=CONVERSATION_ENTITY_ID,
+    )
+
+    assert result.response.response_type == intent.IntentResponseType.ACTION_DONE
+
+
+async def test_conversation_timer_action_handle_error(
+    hass: HomeAssistant,
+    mock_perplexity_client: MagicMock,
+    mock_setup_entry: MockConfigEntry,
+    mock_stream: MagicMock,
+) -> None:
+    """Test conversation gracefully handles timer IntentHandleError."""
+    json_response = json_dumps(
+        {
+            "response": "Cancelling the timer.",
+            "actions": [],
+            "timer_actions": [
+                {
+                    "command": "cancel",
+                    "name": "eggs",
+                }
+            ],
+        }
+    )
+    mock_perplexity_client.chat.completions.create = AsyncMock(
+        return_value=mock_stream(json_response)
+    )
+
+    result = await conversation.async_converse(
+        hass,
+        "Cancel egg timer",
+        None,
+        Context(),
+        agent_id=CONVERSATION_ENTITY_ID,
+    )
+
+    assert result.response.response_type == intent.IntentResponseType.ACTION_DONE
+
+
+def test_parsed_timer_action_str_minimal() -> None:
+    """Test ParsedTimerAction string representation with minimal fields."""
+    action = ParsedTimerAction(command="cancel")
+
+    assert str(action) == "timer.cancel"
+
+
+def test_parsed_timer_action_str_with_name_and_minutes() -> None:
+    """Test ParsedTimerAction string representation with name and minutes."""
+    action = ParsedTimerAction(command="start", name="eggs", minutes=5)
+
+    assert str(action) == "timer.start name=eggs 5m"
+
+
+def test_parsed_timer_action_str_with_name_and_hours() -> None:
+    """Test ParsedTimerAction string representation with name and hours."""
+    action = ParsedTimerAction(command="start", name="cake", hours=1)
+
+    assert str(action) == "timer.start name=cake 1h"
+
+
+def test_parsed_timer_action_str_with_name_and_seconds() -> None:
+    """Test ParsedTimerAction string representation with name and seconds."""
+    action = ParsedTimerAction(command="start", name="cake", seconds=30)
+
+    assert str(action) == "timer.start name=cake 30s"
+
+
+def test_parse_json_response_timer_actions_invalid_command() -> None:
+    """Test that timer actions with invalid commands are skipped."""
+    response = json_dumps(
+        {
+            "response": "Test",
+            "timer_actions": [
+                {"command": "invalid_command", "minutes": 5},
+                {"command": "start", "minutes": 10},
+            ],
+        }
+    )
+
+    result = _parse_json_response(response)
+
+    assert len(result.timer_actions) == 1
+    assert result.timer_actions[0].command == "start"
+
+
+def test_parse_json_response_timer_actions_non_dict_skipped() -> None:
+    """Test that non-dict timer action entries are skipped."""
+    response = json_dumps(
+        {
+            "response": "Test",
+            "timer_actions": ["not a dict", {"command": "start", "minutes": 5}],
+        }
+    )
+
+    result = _parse_json_response(response)
+
+    assert len(result.timer_actions) == 1
+
+
+def test_build_timer_slots_start_with_conversation_command() -> None:
+    """Test building slots for a start timer with conversation command."""
+    timer_action = ParsedTimerAction(
+        command="start",
+        name="pizza",
+        hours=1,
+        minutes=30,
+        seconds=0,
+    )
+
+    slots = _build_timer_slots(timer_action)
+
+    assert slots["name"] == {"value": "pizza"}
+    assert slots["hours"] == {"value": 1}
+    assert slots["minutes"] == {"value": 30}
+    assert slots["seconds"] == {"value": 0}
