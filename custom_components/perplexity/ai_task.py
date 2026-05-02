@@ -18,7 +18,10 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     """Set up AI Task entities."""
-    for subentry in config_entry.get_subentries_of_type(SUBENTRY_TYPE_AI_TASK):
+    for subentry in config_entry.subentries.values():
+        if subentry.subentry_type != "ai_task_data":
+            continue
+            
         async_add_entities(
             [PerplexityAITaskEntity(config_entry, subentry)],
             config_subentry_id=subentry.subentry_id,
