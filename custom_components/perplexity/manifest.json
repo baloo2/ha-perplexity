@@ -10,13 +10,13 @@
     ],
     "config_flow": true,
     "dependencies": ["conversation"],
-    "documentation": "https://github.com/bieniu/ha-perplexity",
+    "documentation": "https://github.com/baloo2/ha-perplexity",
     "integration_type": "service",
     "iot_class": "cloud_polling",
-    "issue_tracker": "https://github.com/bieniu/ha-perplexity",
+    "issue_tracker": "https://github.com/baloo2/ha-perplexity",
     "requirements": [
         "perplexityai==0.32.1",
         "aiofiles>=24.0.0"
     ],
-    "version": "0.0.5"
+    "version": "0.0.6"
 }
